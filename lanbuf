@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# lanbuf — LAN-wide copy/paste over SSH (no env needed)
+# Usage:
+#   echo "data" | lanbuf        # write to shared buffer
+#   lanbuf                      # read from shared buffer
+#   lanbuf --get | --set        # force mode
+#   lanbuf --setup user@host    # set the shared host for this machine
+#
+# Config resolution (in order):
+#   1) ~/.config/lanbuf/server  (e.g. "user@host" or an SSH alias)
+#   2) SSH alias "lanbuf"       (put a Host entry in ~/.ssh/config)
+# Path resolution:
+#   1) ~/.config/lanbuf/path
+#   2) ~/lanbuf/buf.txt
+
+set -euo pipefail
+
+cfg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/lanbuf"
+server_file="$cfg_dir/server"
+path_file="$cfg_dir/path"
+
+server_default="lanbuf"                      # SSH alias fallback
+path_default='~/.lanbuf/buf.txt'              # remote buffer path
+
+read_cfg() {
+  [[ -f "$server_file" ]] && srv="$(<"$server_file")" || srv="$server_default"
+  [[ -f "$path_file" ]] && rpath="$(<"$path_file")" || rpath="$path_default"
+}
+
+write_cfg() {
+  mkdir -p "$cfg_dir"
+  printf '%s' "$1" >"$server_file"
+  [[ -n "${2:-}" ]] && printf '%s' "$2" >"$path_file"
+}
+
+have_stdin() { [[ ! -t 0 ]]; }
+
+remote_write() {
+  ssh -o BatchMode=yes "$srv" "bash -c '
+set -euo pipefail
+path=\"\$1\"; dir=\${path%/*}
+umask 0077
+mkdir -p \"\$dir\"
+tmp=\"\$path.tmp.\$\$.$RANDOM\"
+cat >\"\$tmp\"
+chmod 600 \"\$tmp\"
+mv -f \"\$tmp\" \"\$path\"
+' bash \"$rpath\""
+}
+
+remote_read() {
+  ssh -o BatchMode=yes "$srv" "cat \"$rpath\" 2>/dev/null || true"
+}
+
+mode="auto"
+case "${1:-}" in
+  --get) mode="get"; shift;;
+  --set) mode="set"; shift;;
+  --setup)
+    shift
+    if [[ $# -lt 1 ]]; then
+      echo "usage: lanbuf --setup user@host [remote_path]" >&2; exit 2
+    fi
+    write_cfg "$1" "${2:-}"
+    read_cfg
+    # Ensure remote dir exists
+    ssh "$srv" "mkdir -p \"${rpath%/*}\""
+    echo "lanbuf configured: server=$srv path=$rpath"
+    exit 0
+    ;;
+esac
+
+read_cfg
+
+case "$mode" in
+  set)  remote_write ;;
+  get)  remote_read  ;;
+  auto) if have_stdin; then remote_write; else remote_read; fi ;;
+esac
+
