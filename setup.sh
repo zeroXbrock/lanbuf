@@ -18,8 +18,8 @@ if [[ -z "$server" ]]; then
   exit 1
 fi
 
-read -rp "Enter remote buffer file path [~/lanbuf/buf.txt]: " path
-path="${path:-~/lanbuf/buf.txt}"
+read -rp "Enter remote buffer file path [/tmp/lanbuf.txt]: " path
+path="${path:-/tmp/lanbuf.txt}"
 
 mkdir -p "$cfg_dir"
 echo "$server" >"$server_file"
