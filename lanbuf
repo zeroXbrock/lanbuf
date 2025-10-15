@@ -20,7 +20,7 @@ server_file="$cfg_dir/server"
 path_file="$cfg_dir/path"
 
 server_default="lanbuf"                      # SSH alias fallback
-path_default='~/.lanbuf/buf.txt'              # remote buffer path
+path_default="~/.lanbuf/buf.txt"              # remote buffer path
 
 read_cfg() {
   [[ -f "$server_file" ]] && srv="$(<"$server_file")" || srv="$server_default"
@@ -38,7 +38,14 @@ have_stdin() { [[ ! -t 0 ]]; }
 remote_write() {
   ssh -o BatchMode=yes "$srv" "bash -c '
 set -euo pipefail
-path=\"\$1\"; dir=\${path%/*}
+path=\"\$1\"
+# Expand leading ~ or ~/
+case \"\$path\" in
+  \"~\") path=\"\$HOME\" ;;
+  \"~/\"*) path=\"\$HOME/\${path#~/}\" ;;
+esac
+
+dir=\${path%/*}
 umask 0077
 mkdir -p \"\$dir\"
 tmp=\"\$path.tmp.\$\$.$RANDOM\"
